@@ -1,22 +1,23 @@
 package akkabank
 
-import java.time.Instant
-
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
 
-
 object BankAccount {
 
   val entityKey: String = "bankAccount"
-  final case class State(balance: Float = 0.0f, accountName: String = "", transactions: List[Transaction] = Nil) {}
+  final case class State(balance: Float = 0.0f, accountName: String = "", transactions: List[Transaction] = Nil) {
+    def addTransaction(newTransaction: Transaction) = copy(transactions = newTransaction :: this.transactions)
+    def toSummary = Summary(this.balance, this.accountName)
+  }
 
   sealed trait Command
   final case class AddTransaction(transaction: Transaction, replyTo: ActorRef[Confirmation]) extends Command
-  final case class SetAccountName(name: String, replyTo: ActorRef[Confirmation]) extends Command
+  final case class SetAccountName(name: String, replyTo: ActorRef[Summary]) extends Command
+  final case class GetSummary(replyTo: ActorRef[Summary]) extends Command
 
-  sealed trait Event {
+  sealed trait Event extends CborSerializable {
     def accountId: String
   }
 
@@ -40,16 +41,22 @@ object BankAccount {
   private def commandHandler(accountId: String, state: State, command: Command): Effect[Event, State] =
     command match {
       case AddTransaction(transaction, replyTo) =>
-        Effect.persist(TransactionAdded(accountId, transaction))
-          .thenReply(replyTo) { state => Accept(Summary(state.balance, state.accountName)) }
+        if (transaction.amount > 0.0f || state.balance + transaction.amount >= 0.0) {
+          Effect.persist(TransactionAdded(accountId, transaction))
+            .thenReply(replyTo) { state => Accept(state.toSummary) }
+        } else {
+          Effect.reply(replyTo)(Reject("insufficient funds"))
+        }
       case SetAccountName(name, replyTo) =>
         Effect.persist(NameChanged(accountId, name))
-          .thenReply(replyTo) { state => Accept(Summary(state.balance, state.accountName)) }
+          .thenReply(replyTo) { _.toSummary }
+      case GetSummary(replyTo) =>
+        Effect.reply(replyTo) { state.toSummary }
     }
 
   private def eventHandler(state: State, event: Event): State =
     event match {
-      case TransactionAdded(_, newTransaction) => state.copy(transactions = newTransaction :: state.transactions)
+      case TransactionAdded(_, newTransaction) => state.addTransaction(newTransaction)
       case NameChanged(_, name) => state.copy(accountName = name)
     }
 }

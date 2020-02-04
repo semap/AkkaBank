@@ -1,0 +1,3 @@
+package akkabank
+
+trait CborSerializable
