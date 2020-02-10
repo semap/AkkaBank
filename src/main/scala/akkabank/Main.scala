@@ -1,55 +1,27 @@
 package akkabank
 
 import java.io.File
+import java.time.Instant
+import java.util.Timer
 import java.util.concurrent.CountDownLatch
+
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
+import akka.cluster.sharding.typed.scaladsl.ClusterSharding
+import akka.cluster.typed.Cluster
 import akka.persistence.cassandra.testkit.CassandraLauncher
+import akka.util.Timeout
+
+import scala.concurrent.duration._
+import com.typesafe.config.{Config, ConfigFactory}
+
+import scala.concurrent.ExecutionContextExecutor
 
 
 object Guardian {
   def apply(): Behavior[String] =
     Behaviors.setup[String] { context =>
-//      import akka.util.Timeout
-//      import java.time.Instant
-//      import scala.concurrent.duration._
-//      import scala.util.{Failure, Success}
-//      import BankAccount._
-//
-//      implicit val timeout: Timeout = 3.seconds
-//      val ba1 = context.spawn(BankAccount("9"), "bankaccount1")
-//      val ba2 = context.spawn(BankAccount("2"), "bankaccount2")
-//      val ba3 = context.spawn(BankAccount("3"), "bankaccount3")
-//      val ba4 = context.spawn(BankAccount("4"), "bankaccount4")
-//
-//      context.ask(ba1, SetAccountName("BA1", _: ActorRef[Summary])) { summary =>
-//        println("BA summary: " + summary)
-//        "aaaaa"
-//      }
-//
-//      val transaction = Transaction(20.00f, "Deposit 20 dollars", Instant.now)
-//
-//      context.ask(ba1, AddTransaction(transaction, _: ActorRef[Confirmation])) {
-//        case Success(confirm) =>
-//          println("add transaction:" + confirm)
-//          "confirmation"
-//        case Failure(ex) => throw ex
-//      }
-//
-//      val transaction2 = Transaction(-130.00f, "Deposit 20 dollars", Instant.now)
-//
-//      context.ask(ba1, AddTransaction(transaction2, _: ActorRef[Confirmation])) {
-//        case Success(confirm) =>
-//          println("add transaction2:" + confirm)
-//          "confirmation"
-//        case Failure(ex) => throw ex
-//      }
-//
-//
-//      context.ask(ba1, GetSummary) { summary =>
-//        println("AAAA" + summary)
-//        "aaff"
-//      }
+      val cluster = Cluster(context.system)
       Behaviors.empty
     }
 }
@@ -64,14 +36,46 @@ object Main {
         new CountDownLatch(1).await()
 
       case None =>
-        val system = ActorSystem[String](Guardian(), "AkkaBank")
+        startNode(2551, 8051)
+        startNode(2552, 8052)
+
     }
   }
 
-
-  def startCassandraDatabase(): Unit = {
+  private def startCassandraDatabase(): Unit = {
     val databaseDirectory = new File("target/cassandra-db")
     CassandraLauncher.start(databaseDirectory, CassandraLauncher.DefaultTestConfigResource, clean = false, port = 9042)
   }
+
+  private def startNode(port: Int, httpPort: Int): Unit = {
+    val system = ActorSystem(Guardian(), "AkkaBank", config(port, httpPort))
+    BankAccount.init(system)
+    val cluster = Cluster(system)
+    implicit val timeout: Timeout = 3.seconds
+    implicit val ex = system.executionContext
+    val sharding = ClusterSharding(system)
+
+    if (port == 2552) {
+
+      val runnable: Runnable = new Runnable {
+        override def run(): Unit = {
+          val ba9 = sharding.entityRefFor(BankAccount.entityTypeKey, "18")
+
+          ba9.ask(BankAccount.AddTransaction(Transaction(30.0f, "test", Instant.now()), _: ActorRef[BankAccount.Confirmation]))
+              .map (confirm => println("confirm:" + confirm))
+          ba9.ask(BankAccount.GetSummary)
+            .map(summary => println("summary:" + summary))
+
+        }
+      }
+      system.scheduler.scheduleOnce(10.seconds, runnable)
+    }
+  }
+
+  def config(port: Int, httpPort: Int): Config =
+    ConfigFactory.parseString(s"""
+      akka.remote.artery.canonical.port = $port
+      akkaBank.http.port = $httpPort
+       """).withFallback(ConfigFactory.load())
 }
 

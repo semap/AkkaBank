@@ -1,18 +1,30 @@
 package akkabank
 
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
+import akka.cluster.sharding.typed.scaladsl.{ClusterSharding, Entity, EntityTypeKey}
 import akka.persistence.typed.PersistenceId
 import akka.persistence.typed.scaladsl.{Effect, EventSourcedBehavior}
 
 object BankAccount {
 
-  val entityKey: String = "bankAccount"
-  final case class State(balance: Float = 0.0f, accountName: String = "", transactions: List[Transaction] = Nil) {
-    def addTransaction(newTransaction: Transaction) = copy(transactions = newTransaction :: this.transactions)
+  val entityTypeKey = EntityTypeKey[Command]("bankAccount")
+
+  // init cluster sharding
+  def init(system: ActorSystem[_]) = {
+    ClusterSharding(system)
+      .init(
+        Entity(entityTypeKey) { entityContext =>
+          BankAccount(entityContext.entityId)
+        }.withRole("accounts")
+      )
+  }
+
+  final case class State(balance: Float = 0.0f, accountName: String = "", transactions: List[Transaction] = Nil) extends CborSerializable {
+    def addTransaction(newTransaction: Transaction) = copy(transactions = newTransaction :: this.transactions, balance = balance + newTransaction.amount)
     def toSummary = Summary(this.balance, this.accountName)
   }
 
-  sealed trait Command
+  sealed trait Command extends CborSerializable
   final case class AddTransaction(transaction: Transaction, replyTo: ActorRef[Confirmation]) extends Command
   final case class SetAccountName(name: String, replyTo: ActorRef[Summary]) extends Command
   final case class GetSummary(replyTo: ActorRef[Summary]) extends Command
@@ -24,15 +36,15 @@ object BankAccount {
   final case class TransactionAdded(accountId: String, transaction: Transaction) extends Event
   final case class NameChanged(accountId: String, name: String) extends Event
 
-  final case class Summary(balance: Float, accountName: String) {}
+  final case class Summary(balance: Float, accountName: String) extends CborSerializable {}
 
-  sealed trait Confirmation {}
+  sealed trait Confirmation extends CborSerializable
   final case class Accept(summary: Summary) extends Confirmation
   final case class Reject(reason: String) extends Confirmation
 
   def apply(accountId: String): Behavior[Command] =
     EventSourcedBehavior(
-      PersistenceId(entityKey, accountId),
+      PersistenceId(entityTypeKey.name, accountId),
       State(),
       (state, command) => commandHandler(accountId, state, command),
       eventHandler
