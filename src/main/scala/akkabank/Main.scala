@@ -1,8 +1,6 @@
 package akkabank
 
 import java.io.File
-import java.time.Instant
-import java.util.Timer
 import java.util.concurrent.CountDownLatch
 
 import akka.actor.typed.scaladsl.Behaviors
@@ -11,12 +9,11 @@ import akka.cluster.sharding.typed.scaladsl.ClusterSharding
 import akka.cluster.typed.Cluster
 import akka.persistence.cassandra.testkit.CassandraLauncher
 import akka.util.Timeout
+import akkabank.BankAccount.{Confirmation, Deposit}
+import akkabank.domain.Money
 
 import scala.concurrent.duration._
 import com.typesafe.config.{Config, ConfigFactory}
-
-import scala.concurrent.ExecutionContextExecutor
-
 
 object Guardian {
   def apply(): Behavior[String] =
@@ -59,9 +56,11 @@ object Main {
 
       val runnable: Runnable = new Runnable {
         override def run(): Unit = {
-          val ba9 = sharding.entityRefFor(BankAccount.entityTypeKey, "18")
+          val ba9 = sharding.entityRefFor(BankAccount.entityTypeKey, "48")
 
-          ba9.ask(BankAccount.AddTransaction(Transaction(30.0f, "test", Instant.now()), _: ActorRef[BankAccount.Confirmation]))
+          val deposit = Deposit(Money(30.0), "tx0001", _)
+
+          ba9.ask(deposit)
               .map (confirm => println("confirm:" + confirm))
           ba9.ask(BankAccount.GetSummary)
             .map(summary => println("summary:" + summary))
