@@ -21,7 +21,7 @@ object BankAccount {
       )
   }
 
-  final case class BankAccountInfo(accountName: String = "", balance: Money = Money(0)) extends CborSerializable {
+  final case class BankAccountInfo(id: String, accountName: String = "", balance: Money = Money(0)) extends CborSerializable {
     def deposit(money: Money): BankAccountInfo = copy(balance = balance.deposit(money.amount))
     def withdraw(money: Money): BankAccountInfo = copy(balance = balance.withdraw(money.amount))
   }
@@ -56,8 +56,6 @@ object BankAccount {
   final case class Deposited(accountId: String, transactionId: String, money: Money) extends Event
   final case class withdrawn(accountId: String, transactionId: String, money: Money) extends Event
   final case class NameChanged(accountId: String, name: String) extends Event
-
-  final case class Summary(balance: Float, accountName: String) extends CborSerializable {}
 
   sealed trait Confirmation extends CborSerializable
   final case class Accept(summary: State) extends Confirmation
@@ -120,7 +118,7 @@ object BankAccount {
       // AccountOpen is the only available event for un-initialized state
       case UnInitialized(_) =>
         event match {
-          case AccountOpen(_, name) => Active(BankAccountInfo(accountName = name))
+          case AccountOpen(id, name) => Active(BankAccountInfo(id = id, accountName = name))
           case _ => state
         }
       case Active(bankAccountInfo) =>

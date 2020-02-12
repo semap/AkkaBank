@@ -16,9 +16,16 @@ import scala.concurrent.duration._
 import com.typesafe.config.{Config, ConfigFactory}
 
 object Guardian {
-  def apply(): Behavior[String] =
+  def apply(httpPort: Int): Behavior[String] =
     Behaviors.setup[String] { context =>
-      val cluster = Cluster(context.system)
+//      val httpPort = context.system.settings.config.getInt("shopping.http.port")
+
+      implicit val system = context.system
+      val cluster = Cluster(system)
+
+      BankAccount.init(system)
+      val routes = new BankServerRoutes()
+      new BankServer(routes.accounts, httpPort, system).start()
       Behaviors.empty
     }
 }
@@ -45,36 +52,35 @@ object Main {
   }
 
   private def startNode(port: Int, httpPort: Int): Unit = {
-    val system = ActorSystem(Guardian(), "AkkaBank", config(port, httpPort))
-    BankAccount.init(system)
-    val cluster = Cluster(system)
-    implicit val timeout: Timeout = 3.seconds
-    implicit val ex = system.executionContext
-    val sharding = ClusterSharding(system)
+    val system = ActorSystem(Guardian(httpPort), "AkkaBank", config(port, httpPort))
+//    val cluster = Cluster(system)
+//    implicit val timeout: Timeout = 3.seconds
+//    implicit val ex = system.executionContext
+//    val sharding = ClusterSharding(system)
 
-    if (port == 2552) {
-
-      val runnable: Runnable = new Runnable {
-        override def run(): Unit = {
-          val ba9 = sharding.entityRefFor(BankAccount.entityTypeKey, "208")
+//    if (port == 2552) {
+//
+//      val runnable: Runnable = new Runnable {
+//        override def run(): Unit = {
+//          val ba9 = sharding.entityRefFor(BankAccount.entityTypeKey, "209")
 //          val openAccount = OpenAccount("acc202", _)
 //          ba9.ask(openAccount)
 //            .map(result => println("account open:" + result))
-
-          val deposit = Deposit(Money(30.0), "tx0001", _)
-
-          ba9.ask(deposit)
-              .map (confirm => println("confirm:" + confirm))
-////
-//          ba9.ask(BankAccount.GetSummary)
-//            .map(summary => println("summary:" + summary))
-//            ba9.ask(SetAccountName("Ana", _: ActorRef[Confirmation]))
-//              .map(result => println("set name result:" + result))
-
-        }
-      }
-      system.scheduler.scheduleOnce(10.seconds, runnable)
-    }
+//
+//          val deposit = Deposit(Money(88.1), "tx0001", _)
+//
+//          ba9.ask(deposit)
+//              .map (confirm => println("confirm:" + confirm))
+//////
+////          ba9.ask(BankAccount.GetSummary)
+////            .map(summary => println("summary:" + summary))
+////            ba9.ask(SetAccountName("Ana", _: ActorRef[Confirmation]))
+////              .map(result => println("set name result:" + result))
+//
+//        }
+//      }
+//      system.scheduler.scheduleOnce(10.seconds, runnable)
+//    }
   }
 
   def config(port: Int, httpPort: Int): Config =

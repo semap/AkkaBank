@@ -6,7 +6,7 @@ scalaVersion := "2.13.1"
 
 lazy val AkkaVersion = "2.6.3"
 lazy val AkkaPersistenceCassandraVersion = "0.102"
-lazy val AkkaHttpVersion = "10.1.10"
+lazy val AkkaHttpVersion = "10.1.11"
 
 libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-cluster-sharding-typed" % AkkaVersion,
