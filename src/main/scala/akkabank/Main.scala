@@ -34,6 +34,11 @@ object Main {
 
   def main(args: Array[String]): Unit = {
     args.headOption match {
+      case Some(portString) if portString.matches("""\d+""") =>
+        val port = portString.toInt
+        val httpPort = ("80" + portString.takeRight(2)).toInt
+        startNode(port, httpPort)
+
       case Some("cassandra") =>
         startCassandraDatabase()
         println("Started Cassandra, press Ctrl + C to kill")
@@ -52,35 +57,7 @@ object Main {
   }
 
   private def startNode(port: Int, httpPort: Int): Unit = {
-    val system = ActorSystem(Guardian(httpPort), "AkkaBank", config(port, httpPort))
-//    val cluster = Cluster(system)
-//    implicit val timeout: Timeout = 3.seconds
-//    implicit val ex = system.executionContext
-//    val sharding = ClusterSharding(system)
-
-//    if (port == 2552) {
-//
-//      val runnable: Runnable = new Runnable {
-//        override def run(): Unit = {
-//          val ba9 = sharding.entityRefFor(BankAccount.entityTypeKey, "209")
-//          val openAccount = OpenAccount("acc202", _)
-//          ba9.ask(openAccount)
-//            .map(result => println("account open:" + result))
-//
-//          val deposit = Deposit(Money(88.1), "tx0001", _)
-//
-//          ba9.ask(deposit)
-//              .map (confirm => println("confirm:" + confirm))
-//////
-////          ba9.ask(BankAccount.GetSummary)
-////            .map(summary => println("summary:" + summary))
-////            ba9.ask(SetAccountName("Ana", _: ActorRef[Confirmation]))
-////              .map(result => println("set name result:" + result))
-//
-//        }
-//      }
-//      system.scheduler.scheduleOnce(10.seconds, runnable)
-//    }
+    ActorSystem(Guardian(httpPort), "AkkaBank", config(port, httpPort))
   }
 
   def config(port: Int, httpPort: Int): Config =
